@@ -111,6 +111,7 @@ const TOUCH='ontouchstart' in window, LOW=TOUCH||Math.min(innerWidth,innerHeight
 
 // ================= renderer =================
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.localClippingEnabled=true;
+const mirRT=new THREE.WebGLRenderTarget(320,80);mirRT.texture.repeat.x=-1;mirRT.texture.offset.x=1;const mirCam=new THREE.PerspectiveCamera(30,4,.6,900);let mirN=0;const mirV=new THREE.Vector3(),mirT=new THREE.Vector3();
 renderer.setPixelRatio(Math.min(devicePixelRatio,LOW?1:1.5));renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.62;
@@ -499,7 +500,7 @@ function buildCar(S,color){
   [1,-1].forEach(sg=>{tube([sg*hwC,b+.02,S.cabF-.1],[sg*hwT,S.roof-.03,S.roofF+.02],.035,alcM);tube([sg*hwT,S.roof-.03,S.roofF+.02],[sg*hwT,S.roof-.03,S.roofR],.03,alcM);
     tube([sg*hwC,b+.02,bzP],[sg*hwT,S.roof-.03,bzP-.05],.045,alcM)});
   ck(new THREE.BoxGeometry(2*hwT,.05,.07),alcM,0,S.roof-.045,S.roofF);
-  ck(new RoundedBoxGeometry(.24,.065,.03,2,.01),trimM,0,S.roof-.12,S.roofF-.1,-.12);ck(new THREE.BoxGeometry(.21,.05,.005),chrome,0,S.roof-.12,S.roofF-.118,-.12);
+  ck(new RoundedBoxGeometry(.24,.065,.03,2,.01),trimM,0,S.roof-.12,S.roofF-.1,-.12);
   ck(new THREE.CylinderGeometry(.008,.008,.07,6),trimM,0,S.roof-.07,S.roofF-.07);
   // windshield glass with a faint tint, wipers parked at the base
   const ws=new THREE.Vector3(0,S.roof-b,S.roofF-S.cabF);const wsL=ws.length();
@@ -547,6 +548,33 @@ function buildCar(S,color){
     tube([x,fl,S.cabF-.18],[xt,S.roof-.08,S.roofF-.03]);tube([xt,S.roof-.08,S.roofF-.03],[xt,S.roof-.08,mh]);tube([x,fl,mh],[xt,S.roof-.08,mh]);
     tube([x,fl+.12,S.cabF-.22],[x,b-.12,mh+.2]);tube([x,b-.12,S.cabF-.3],[x,fl+.12,mh+.15])});
   tube([-(hwT-.06),S.roof-.08,mh],[hwT-.06,S.roof-.08,mh]);tube([-(hwC-.06),b-.14,S.cabF-.32],[hwC-.06,b-.14,S.cabF-.32]);tube([-(hwT-.06),S.roof-.08,mh],[hwC-.06,fl+.05,mh]);
+  // materials with real surface texture: alcantara fuzz / leather grain + contrast stitching
+  const fuzzT=ctex(128,128,(g2,w2,h2)=>{g2.fillStyle='#808080';g2.fillRect(0,0,w2,h2);for(let k2=0;k2<6000;k2++){const v2=95+Math.random()*70|0;g2.fillStyle=`rgb(${v2},${v2},${v2})`;g2.fillRect(Math.random()*w2,Math.random()*h2,1,1)}},true,false);fuzzT.repeat.set(5,5);
+  alcM.bumpMap=fuzzT;alcM.bumpScale=.8;alcM.color.setHex(0x2c2d31);trimM.bumpMap=fuzzT;trimM.bumpScale=.35;trimM.color.setHex(0x25262a);
+  const stitchM=new THREE.MeshStandardMaterial({color:new THREE.Color(S.stripe),roughness:.6});
+  const stG=new THREE.TorusGeometry(.165,.0028,6,60,Math.PI*1.6);stG.rotateZ(-Math.PI*.3);ck(stG,stitchM,0,0,-.019,0,0,0,wheelS);
+  ck(new THREE.BoxGeometry(2*hwC-.06,.004,.004),stitchM,0,b+.035,dz0+.002);
+  // working rear-view mirror (live picture of what's behind you)
+  const mirP=ck(new THREE.PlaneGeometry(.21,.052),new THREE.MeshBasicMaterial({map:mirRT.texture}),0,S.roof-.12,S.roofF-.123,-.12,Math.PI);
+  // the driver's arms in a race suit with gloves, holding the wheel
+  const suitM=new THREE.MeshStandardMaterial({color:0x23262c,roughness:.85,bumpMap:fuzzT,bumpScale:.5});
+  const gloveM=new THREE.MeshStandardMaterial({color:0x121316,roughness:.7,bumpMap:fuzzT,bumpScale:.3});const cuffM=new THREE.MeshStandardMaterial({color:new THREE.Color(S.stripe),roughness:.6});
+  const eyeY=b+(S.roof-b)*.5,Yax=new THREE.Vector3(0,1,0);
+  const armsC=[1,-1].map(sg=>{const up=new THREE.Mesh(new THREE.CylinderGeometry(.056,.048,1,14),suitM),fo=new THREE.Mesh(new THREE.CylinderGeometry(.047,.038,1,14),suitM),
+    cuff=new THREE.Mesh(new THREE.CylinderGeometry(.043,.043,.045,14),cuffM),el=new THREE.Mesh(new THREE.SphereGeometry(.05,14,10),suitM),hand=new THREE.Group();
+    hand.add(new THREE.Mesh(new RoundedBoxGeometry(.09,.105,.055,2,.022),gloveM));const th=new THREE.Mesh(new RoundedBoxGeometry(.032,.065,.03,2,.012),gloveM);th.position.set(-sg*.05,.025,-.012);th.rotation.z=sg*.5;hand.add(th);
+    [up,fo,cuff,el,hand].forEach(o=>cockpit.add(o));return {sg,up,fo,cuff,el,hand,sh:new THREE.Vector3(.36+sg*.23,eyeY-.32,eyeZ-.12)}});
+  const vH=new THREE.Vector3(),vE=new THREE.Vector3(),vD=new THREE.Vector3(),vP=new THREE.Vector3();
+  const bone=(m,A,B)=>{m.position.copy(A).add(B).multiplyScalar(.5);m.scale.set(1,A.distanceTo(B),1);m.quaternion.setFromUnitVectors(Yax,vD.copy(B).sub(A).normalize())};
+  const posArms=()=>{const rz=THREE.MathUtils.clamp(wheelS.rotation.z,-.9,.9);sw.updateMatrix();
+    for(const A of armsC){const a=(A.sg>0?.15:Math.PI-.15)+rz;vH.set(.163*Math.cos(a),.163*Math.sin(a),-.012).applyMatrix4(sw.matrix);
+      const L1=.29,L2=.28;vD.copy(vH).sub(A.sh);let d=vD.length();d=Math.min(d,L1+L2-.005);vD.normalize();
+      const aa=(L1*L1-L2*L2+d*d)/(2*d),hh=Math.sqrt(Math.max(0,L1*L1-aa*aa));
+      vP.set(A.sg*1.1,-1,-.2);vP.addScaledVector(vD,-vP.dot(vD)).normalize();
+      vE.copy(A.sh).addScaledVector(vD,aa).addScaledVector(vP,hh);const vHn=vH.clone();
+      bone(A.up,A.sh,vE);A.el.position.copy(vE);const cuffS=vHn.clone().addScaledVector(vD.copy(vHn).sub(vE).normalize(),-.06);bone(A.fo,vE,cuffS);
+      A.cuff.position.copy(cuffS).addScaledVector(vD,.02);A.cuff.quaternion.setFromUnitVectors(Yax,vD);
+      A.hand.position.copy(vHn);A.hand.quaternion.copy(sw.quaternion);A.hand.rotateZ(a-(A.sg>0?0:Math.PI))}};
   // live update for display, shift lights, handbrake and shifter
   const ledCol=[0x22dd44,0x22dd44,0x22dd44,0x22dd44,0xffd21a,0xffd21a,0xffd21a,0xff2a2a,0xff2a2a,0xff2a2a];let flash=0,lastG=1;
   const cockUpd=(dt,rpmV,gearV,mph,hb,red)=>{if(gearV!==lastG){shifter.rotation.x=gearV>lastG?.35:-.35;lastG=gearV}const fC=rpmV/red,lit=Math.round(THREE.MathUtils.clamp((fC-.55)/.4,0,1)*10);flash+=dt;
@@ -557,14 +585,14 @@ function buildCar(S,color){
     gC.font='800 34px system-ui,sans-serif';gC.textAlign='left';gC.fillText(Math.round(mph),14,96);gC.font='600 13px system-ui,sans-serif';gC.fillStyle='#8a97a3';gC.fillText('MPH',16,112);
     gC.textAlign='right';gC.fillStyle='#fff';gC.font='800 22px system-ui,sans-serif';gC.fillText(Math.round(rpmV),306,80);gC.font='600 13px system-ui,sans-serif';gC.fillStyle='#8a97a3';gC.fillText('RPM',306,98);
     gC.fillStyle='#2bd36b';gC.fillText('OIL 104°  H2O 92°',306,114);dTex.needsUpdate=true;
-    hbrake.rotation.x=THREE.MathUtils.lerp(hbrake.rotation.x,hb?-.55:0,Math.min(1,dt*14));shifter.rotation.x=THREE.MathUtils.lerp(shifter.rotation.x,0,Math.min(1,dt*8))};
+    posArms();hbrake.rotation.x=THREE.MathUtils.lerp(hbrake.rotation.x,hb?-.55:0,Math.min(1,dt*14));shifter.rotation.x=THREE.MathUtils.lerp(shifter.rotation.x,0,Math.min(1,dt*8))};
   // cut the solid body open around the cabin while you sit inside it
   const clipL=[new THREE.Plane(new THREE.Vector3(1,0,0),-(W/2-.07)),new THREE.Plane(new THREE.Vector3(-1,0,0),-(W/2-.07)),new THREE.Plane(new THREE.Vector3(0,1,0),-(b+.06)),
     new THREE.Plane(new THREE.Vector3(0,-1,0),fl-.02),new THREE.Plane(new THREE.Vector3(0,0,1),-(S.cabF-.04)),new THREE.Plane(new THREE.Vector3(0,0,-1),S.cabR+.1)];
   const clipW=clipL.map(p=>p.clone());
   const setClip=on=>{if(on){body.updateWorldMatrix(true,false);clipL.forEach((p,iC)=>clipW[iC].copy(p).applyMatrix4(body.matrixWorld))}else clipW[0].set(new THREE.Vector3(1,0,0),1e9)};setClip(false);
   paint.userData.twin=paintP;
-  return {g,body,model,cockpit,cab:[cabM,roofM],wheelS,cockUpd,setClip,clipW,shifter,wheels,pivots,piv4,paint,paintP,tlM,flames:exM,dentGeos:[lower,glass,roof],panes:paneM,loose,heads,head}
+  return {g,body,model,cockpit,cab:[cabM,roofM],wheelS,cockUpd,setClip,clipW,shifter,mirP,wheels,pivots,piv4,paint,paintP,tlM,flames:exM,dentGeos:[lower,glass,roof],panes:paneM,loose,heads,head}
 }
 let carIdx=0,P=CARS[0],CAR=null,colorSel=null;
 function setCar(i){carIdx=(i+CARS.length)%CARS.length;P=CARS[carIdx];
@@ -1022,7 +1050,7 @@ $('viewBtn').onclick=e=>{setView(camMode+1);e.currentTarget.blur()};{let v=0;try
 $('free').onclick=()=>start('free');$('chal').onclick=()=>start('chal');$('pause').onclick=()=>toMenu();
 {const b=store.get('driftBest_free');$('res').innerHTML=b?`Best Free Drive score: <b>${b}</b>`:''}
 
-const camPos=new THREE.Vector3(0,3,-40),camLook=new THREE.Vector3(),camTmp=new THREE.Vector3(),tvPos=new THREE.Vector3(),driftOff=new THREE.Vector3(0,2,-8);let tvSet=false,tvSide=1,driftSide=1;
+const camPos=new THREE.Vector3(0,3,-40),camLook=new THREE.Vector3(),camTmp=new THREE.Vector3(),tvPos=new THREE.Vector3(),driftOff=new THREE.Vector3(0,2,-8);let tvSet=false,tvSide=1,driftSide=1,headX=0,headZ=0;
 function update(dt){
   if(msgT>0){msgT-=dt;if(msgT<=0)$('msg').textContent=''}
   if(state==='count'){cd-=dt;$('msg').style.color='#fff';$('msg').textContent=cd>0?Math.ceil(cd):'GO!';msgT=.7;if(cd<=0)state='race'}
@@ -1069,8 +1097,9 @@ function update(dt){
     CAR.wheelS.rotation.z=-steer*2.6;CAR.setClip(V==='driver');if(V==='driver')CAR.cockUpd(dt,rpm,gear,sp*2.237,inp.hb,P.red);
     if(inCar){const L=S.len/2,b=S.belt;
       const p=V==='driver'?[.36,b+(S.roof-b)*.5,S.roofF-.82]:V==='hood'?[0,(b+S.noseH)/2+.36,S.cabF-.05]:[0,S.noseH-.14,L+.28];
+      if(V==='driver'){headX+=(THREE.MathUtils.clamp(-ayS*.006,-.08,.08)-headX)*Math.min(1,dt*8);headZ+=(THREE.MathUtils.clamp(-axS*.005,-.07,.07)-headZ)*Math.min(1,dt*8);p[0]+=headX;p[2]+=headZ;const bz=rpm/P.red*.0016;p[1]+=Math.sin(t*157)*bz;p[0]+=Math.cos(t*139)*bz}
       CAR.body.localToWorld(camTmp.set(p[0],p[1],p[2]));CAR.body.localToWorld(camLook.set(p[0],p[1]-(V==='driver'?.6:.35),p[2]+14));
-      camera.position.set(camTmp.x+Math.sin(t*37)*sk*.4,camTmp.y+Math.sin(t*41)*sk*.4,camTmp.z);camPos.copy(camTmp);camera.lookAt(camLook);
+      camera.position.set(camTmp.x+Math.sin(t*37)*sk*.4,camTmp.y+Math.sin(t*41)*sk*.4,camTmp.z);camPos.copy(camTmp);camera.lookAt(camLook);if(V==='driver')camera.rotateZ(-THREE.MathUtils.clamp(roll,-.09,.09)*.8-headX*.6);
       camera.fov=(V==='driver'?60:V==='hood'?64:70)+Math.min(sp,60)*.25}
     else if(V==='side'){driftSide+=((beta<-.05?-1:beta>.05?1:driftSide>=0?1:-1)-driftSide)*Math.min(1,dt*1.5);
       const lx=cs,lz=-sn;driftOff.lerp(camTmp.set(-sn*2+lx*driftSide*8.5,2.1,-cs*2+lz*driftSide*8.5),1-Math.exp(-dt*2.5));driftOff.setLength(Math.max(8,driftOff.length()));driftOff.y=2.1;camPos.set(car.x+driftOff.x,driftOff.y,car.z+driftOff.z);
@@ -1101,7 +1130,10 @@ function update(dt){
   else{$('dpts').textContent='';$('dmul').textContent=''}
 }
 let last=performance.now();
-function loop(now){film.uniforms.t.value=now*.001%100;const dt=Math.min(.033,(now-last)/1000);last=now;update(dt);composer.render();requestAnimationFrame(loop)}
+function loop(now){film.uniforms.t.value=now*.001%100;const dt=Math.min(.033,(now-last)/1000);last=now;update(dt);composer.render();
+  if(CAR&&CAR.cockpit.visible&&(mirN++&1)){CAR.mirP.getWorldPosition(mirV);mirCam.position.copy(mirV);mirT.set(-Math.sin(car.yaw)*20,-.6,-Math.cos(car.yaw)*20).add(mirV);mirCam.lookAt(mirT);
+    CAR.mirP.visible=false;renderer.shadowMap.autoUpdate=false;renderer.setRenderTarget(mirRT);renderer.render(scene,mirCam);renderer.setRenderTarget(null);renderer.shadowMap.autoUpdate=true;CAR.mirP.visible=true}
+  requestAnimationFrame(loop)}
 $('load').remove();$('menu').style.display='flex';
 requestAnimationFrame(loop);
 window.__game={setMap:k=>setMap(k),get dmg(){return dmg},step(n){for(let i=0;i<n;i++)update(1/60)},get state(){return state},get car(){return car},K,get score(){return score},get cur(){return cur},start,setCar,
