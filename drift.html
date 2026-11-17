@@ -37,6 +37,7 @@ a{color:#e2e4f0;font-size:14px}
 .st{display:flex;align-items:center;gap:10px;font-size:13px;margin:4px 0}.st span{width:78px;color:#c9cce0}.st i{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}.st i b{display:block;height:100%;background:linear-gradient(90deg,#ffd36b,#ff7ab6)}.st em{font-style:normal;width:70px;text-align:right;font-weight:700}
 .modes{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}.ghost{background:rgba(255,255,255,.16);color:#fff}
 .tog{font-size:14px;color:#e2e4f0;display:flex;gap:8px;align-items:center;cursor:pointer}
+#viewBtn{position:fixed;top:50px;left:50%;transform:translateX(-50%);display:none;font-size:13px;padding:7px 16px;background:rgba(0,0,0,.45);color:#fff}
 #pause{position:fixed;top:12px;left:50%;transform:translateX(-50%);display:none;font-size:13px;padding:7px 16px;background:rgba(0,0,0,.45);color:#fff}
 #menu{gap:12px}
 @media (max-height:760px){#keys{display:none}#menu h1{font-size:46px!important}#menu{gap:9px!important}}
@@ -70,10 +71,10 @@ a{color:#e2e4f0;font-size:14px}
   <div class="maps" id="maps"></div>
   <div class="modes"><button id="free">FREE DRIVE</button><button id="multi" class="ghost">👥 MULTIPLAYER</button><button id="chal" class="ghost">2-MIN CHALLENGE</button></div>
   <label class="tog"><input type="checkbox" id="assist" checked> Drift assist (auto counter-steer &amp; launch control)</label>
-  <div id="keys">↑ / W gas · ↓ / S brake &amp; reverse · ← → / A D steer · SPACE handbrake · C camera · R repair · M mute · ESC menu<br>Free Drive has no timer &mdash; drift as long as you like. Keep the slide going to grow your combo.</div>
+  <div id="keys">↑ / W gas · ↓ / S brake &amp; reverse · ← → / A D steer · SPACE handbrake · C / V change view · R repair · M mute · ESC menu<br>Free Drive has no timer &mdash; drift as long as you like. Keep the slide going to grow your combo.</div>
   <a href="./">← back to Kosta's Games</a>
 </div>
-<button id="pause">☰ Menu</button>
+<button id="pause">☰ Menu</button><button id="viewBtn">🎥 Chase</button>
 <div id="lobby"><div class="lp">
   <h2>Multiplayer</h2>
   <label>Your name <input id="nick" maxlength="12" placeholder="Driver"></label>
@@ -477,8 +478,17 @@ function buildCar(S,color){
   const head=new THREE.SpotLight(0xfff2dc,260,70,.42,.55,1.6);head.position.set(0,.8,L);head.target.position.set(0,0,L+14);model.add(head,head.target);
   const shadowTex=ctex(128,256,(c,w,h)=>{const gr=c.createRadialGradient(64,128,10,64,128,120);gr.addColorStop(0,'rgba(0,0,0,.75)');gr.addColorStop(1,'rgba(0,0,0,0)');c.fillStyle=gr;c.fillRect(0,0,w,h)});
   const blob=new THREE.Mesh(flat(W+.7,S.len+1),new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));blob.position.y=.015;model.add(blob);
+  const cockpit=new THREE.Group();body.add(cockpit);cockpit.visible=false;
+  const dashM=new THREE.MeshStandardMaterial({color:0x17181b,roughness:.8});
+  const dash=new THREE.Mesh(new THREE.BoxGeometry(W-.42,.16,.55),dashM);dash.position.set(0,b+.05,S.roofF+.32);cockpit.add(dash);
+  const gauge=new THREE.Mesh(new THREE.PlaneGeometry(.3,.09),new THREE.MeshStandardMaterial({color:0x000000,emissive:0xff8a3c,emissiveIntensity:1.6}));gauge.position.set(.36,b+.135,S.roofF+.06);gauge.rotation.x=-.5;cockpit.add(gauge);
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(W-.3,S.roofF-S.cabR+.8),dashM);floor.rotation.x=-Math.PI/2;floor.position.set(0,b+.1,(S.roofF+S.cabR)/2+.2);cockpit.add(floor);
+  const sw=new THREE.Group();sw.position.set(.36,b+.16,S.roofF-.1);sw.rotation.x=-.4;sw.scale.setScalar(.8);cockpit.add(sw);const wheelS=new THREE.Group();sw.add(wheelS);
+  wheelS.add(new THREE.Mesh(new THREE.TorusGeometry(.17,.022,10,28),dashM));const spk=new THREE.Mesh(new THREE.BoxGeometry(.32,.04,.02),dashM);wheelS.add(spk);
+  const spk2=new THREE.Mesh(new THREE.BoxGeometry(.04,.16,.02),dashM);spk2.position.y=-.08;wheelS.add(spk2);const tick=new THREE.Mesh(new THREE.BoxGeometry(.03,.03,.025),new THREE.MeshStandardMaterial({color:0xffd36b}));tick.position.y=.17;wheelS.add(tick);
+  const cage=new THREE.MeshStandardMaterial({color:0x2a2d31,metalness:.6,roughness:.4});[[.62],[-.62]].forEach(([x])=>{const bar=new THREE.Mesh(new THREE.CylinderGeometry(.02,.02,(S.roof-b)*.9,8),cage);bar.position.set(x,b+(S.roof-b)*.45,S.roofF-.05);bar.rotation.x=-.5;cockpit.add(bar)});
   paint.userData.twin=paintP;
-  return {g,body,model,wheels,pivots,piv4,paint,paintP,tlM,flames:exM,dentGeos:[lower,glass,roof],panes:paneM,loose,heads,head}
+  return {g,body,model,cockpit,cab:[cabM,roofM],wheelS,wheels,pivots,piv4,paint,paintP,tlM,flames:exM,dentGeos:[lower,glass,roof],panes:paneM,loose,heads,head}
 }
 let carIdx=0,P=CARS[0],CAR=null,colorSel=null;
 function setCar(i){carIdx=(i+CARS.length)%CARS.length;P=CARS[carIdx];
@@ -705,10 +715,12 @@ function pop(v,f0){if(!AC||muted)return;const t=AC.currentTime,o=AC.createOscill
 
 // ================= input =================
 const K={};let camMode=0;
+const VIEWS=[['Chase','chase'],['Close chase','close'],['Far chase','far'],['Hood','hood'],['Driver','driver'],['Bumper','bumper'],['Drift cam','side'],['Top down','top'],['TV cam','tv']];
+function setView(i){camMode=(i+VIEWS.length)%VIEWS.length;$('viewBtn').textContent='🎥 '+VIEWS[camMode][0];try{localStorage.setItem('driftView',camMode)}catch(e){}}
 const km={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Space:'drift'};
 addEventListener('keydown',e=>{const k=km[e.code];if(k){K[k]=true;e.preventDefault()}
   if(e.code==='KeyM'&&master){muted=!muted;master.gain.value=muted?0:.55}
-  if(e.code==='KeyC')camMode=(camMode+1)%3;
+  if(e.code==='KeyC'||e.code==='KeyV')setView(camMode+(e.shiftKey?-1:1));
   if(e.code==='KeyR'&&state!=='menu'&&wreckT<=0&&dmg>0){repairCar();showMsg('REPAIRED','#7cf5c4')}
   if(e.code==='Escape'&&state!=='menu')toMenu();
   if(state==='menu'){if(e.code==='ArrowLeft')setCar(carIdx-1);if(e.code==='ArrowRight')setCar(carIdx+1);if(e.code==='Enter')start('free')}});
@@ -922,18 +934,19 @@ MAPDEF.forEach(([k,n])=>{const b=document.createElement('button');b.textContent=
 {let m='city';try{m=localStorage.getItem('driftMap')||'city'}catch(e){}setMap(m)}
 function showMsg(t,c){$('msg').textContent=t;$('msg').style.color=c||'#fff';msgT=1.8}
 function start(m){mode=m;audio();repairCar();if(AC&&AC.state==='suspended')AC.resume();resetCar();score=0;bestDrift=0;cur=0;dtime=0;mult=1;idle=0;timeLeft=TIME;cd=3;lw=[null,null,null,null];clearSkids();
-  for(const k in K)K[k]=false;state='count';$('menu').style.display='none';$('hud').style.display='flex';$('spd').style.display='block';$('pause').style.display='block';if(TOUCH)$('touch').style.display='flex';if(m==='multi'){$('plist').style.display='block';cd=1.5;const sp=(NET.id||'x').split('').reduce((a,c)=>a+c.charCodeAt(0),0)%8;{const o=(sp%3-1)*3.6,bk=Math.floor(sp/3)*7,c=Math.cos(car.yaw),s=Math.sin(car.yaw);car.x+=c*o-s*bk;car.z+=-s*o-c*bk}}}
+  for(const k in K)K[k]=false;state='count';$('menu').style.display='none';$('hud').style.display='flex';$('spd').style.display='block';$('pause').style.display='block';$('viewBtn').style.display='block';if(TOUCH)$('touch').style.display='flex';if(m==='multi'){$('plist').style.display='block';cd=1.5;const sp=(NET.id||'x').split('').reduce((a,c)=>a+c.charCodeAt(0),0)%8;{const o=(sp%3-1)*3.6,bk=Math.floor(sp/3)*7,c=Math.cos(car.yaw),s=Math.sin(car.yaw);car.x+=c*o-s*bk;car.z+=-s*o-c*bk}}}
 function bank(){if(cur<=0)return;const p=Math.round(cur*mult);score+=p;bestDrift=Math.max(bestDrift,p);
   showMsg('+'+p+(p>8000?'  LEGENDARY!':p>4000?'  INSANE DRIFT!':p>1500?'  GREAT DRIFT!':'  NICE!'),p>4000?'#ff7ab6':p>1500?'#ffd36b':'#7cf5c4');cur=0;dtime=0;mult=1;idle=0}
 function wipe(){if(cur>0)showMsg('WIPEOUT!','#ff4d6d');cur=0;dtime=0;mult=1;idle=0}
-function toMenu(final){bank();if(mode==='multi')leaveNet();$('plist').style.display='none';state='menu';$('hud').style.display='none';$('spd').style.display='none';$('pause').style.display='none';$('touch').style.display='none';
+function toMenu(final){bank();if(mode==='multi')leaveNet();$('plist').style.display='none';state='menu';$('hud').style.display='none';$('spd').style.display='none';$('pause').style.display='none';$('viewBtn').style.display='none';$('touch').style.display='none';
   const key='driftBest_'+mode,best=store.get(key),nb=score>best;if(nb)store.set(key,score);
   $('res').innerHTML=`<b>${final?"TIME'S UP!":'RUN OVER'}</b> &nbsp; Score: <b>${score}</b>${nb&&score?' 🏆 NEW BEST!':''} &nbsp; Best drift: <b>${bestDrift}</b>`;
   $('menu').style.display='flex'}
+$('viewBtn').onclick=e=>{setView(camMode+1);e.currentTarget.blur()};{let v=0;try{v=+localStorage.getItem('driftView')||0}catch(e){}setView(v)}
 $('free').onclick=()=>start('free');$('chal').onclick=()=>start('chal');$('pause').onclick=()=>toMenu();
 {const b=store.get('driftBest_free');$('res').innerHTML=b?`Best Free Drive score: <b>${b}</b>`:''}
 
-const camPos=new THREE.Vector3(0,3,-40),camLook=new THREE.Vector3();
+const camPos=new THREE.Vector3(0,3,-40),camLook=new THREE.Vector3(),camTmp=new THREE.Vector3(),tvPos=new THREE.Vector3(),driftOff=new THREE.Vector3(0,2,-8);let tvSet=false,tvSide=1,driftSide=1;
 function update(dt){
   if(msgT>0){msgT-=dt;if(msgT<=0)$('msg').textContent=''}
   if(state==='count'){cd-=dt;$('msg').style.color='#fff';$('msg').textContent=cd>0?Math.ceil(cd):'GO!';msgT=.7;if(cd<=0)state='race'}
@@ -975,12 +988,28 @@ function update(dt){
   CAR.tlM.emissiveIntensity=inp.down||inp.hb?14:3;
   // camera
   if(state==='menu'){orbit+=dt*.18;const wide=innerWidth>=900,o=wide?-2.4:0;camera.position.set(car.x+Math.sin(orbit)*7.5,1.6,car.z+Math.cos(orbit)*7.5);camera.lookAt(car.x+Math.cos(orbit)*o,wide?.9:.4,car.z-Math.sin(orbit)*o);camera.fov=45}
-  else{let dx=sn,dz=cs;if(sp>4){const vx=car.vx/sp,vz=car.vz/sp;dx=sn*.55+vx*.45;dz=cs*.55+vz*.45;const l=Math.hypot(dx,dz);dx/=l;dz/=l}
-    const dist=camMode===1?4.4:camMode===2?11:6.8,hgt=camMode===1?1.55:camMode===2?4.5:2.3;
-    const want=new THREE.Vector3(car.x-dx*dist,hgt,car.z-dz*dist);camPos.lerp(want,1-Math.exp(-dt*(camMode===1?12:5)));
-    shake*=Math.exp(-dt*5);const t=performance.now()*.001,sk=shake*.25+Math.min(sp,60)*.0007;
-    camera.position.set(camPos.x+Math.sin(t*37)*sk,camPos.y+Math.sin(t*41)*sk,camPos.z+Math.cos(t*33)*sk);
-    camLook.set(car.x+sn*3,.9,car.z+cs*3);camera.lookAt(camLook);camera.fov=56+Math.min(sp,60)*.3}
+  else{const V=VIEWS[camMode][1];shake*=Math.exp(-dt*5);const t=performance.now()*.001,sk=shake*.25+Math.min(sp,60)*.0007;
+    const inCar=V==='hood'||V==='driver'||V==='bumper';CAR.panes.forEach(m=>m.visible=V!=='driver');CAR.cockpit.visible=V==='driver';CAR.cab.forEach(m=>m.visible=V!=='driver');
+    CAR.wheelS.rotation.z=-steer*2.6;
+    if(inCar){const L=S.len/2,b=S.belt;
+      const p=V==='driver'?[.36,b+(S.roof-b)*.62,S.roofF-.62]:V==='hood'?[0,(b+S.noseH)/2+.36,S.cabF-.05]:[0,S.noseH-.14,L+.28];
+      CAR.body.localToWorld(camTmp.set(p[0],p[1],p[2]));CAR.body.localToWorld(camLook.set(p[0],p[1]-(V==='driver'?.25:.35),p[2]+14));
+      camera.position.set(camTmp.x+Math.sin(t*37)*sk*.4,camTmp.y+Math.sin(t*41)*sk*.4,camTmp.z);camPos.copy(camTmp);camera.lookAt(camLook);
+      camera.fov=(V==='driver'?68:V==='hood'?64:70)+Math.min(sp,60)*.25}
+    else if(V==='side'){driftSide+=((beta<-.05?-1:beta>.05?1:driftSide>=0?1:-1)-driftSide)*Math.min(1,dt*1.5);
+      const lx=cs,lz=-sn;driftOff.lerp(camTmp.set(-sn*2+lx*driftSide*8.5,2.1,-cs*2+lz*driftSide*8.5),1-Math.exp(-dt*2.5));driftOff.setLength(Math.max(8,driftOff.length()));driftOff.y=2.1;camPos.set(car.x+driftOff.x,driftOff.y,car.z+driftOff.z);
+      camera.position.set(camPos.x+Math.sin(t*37)*sk,camPos.y+Math.sin(t*41)*sk,camPos.z);camera.lookAt(car.x+sn*1.2,.75,car.z+cs*1.2);camera.fov=58}
+    else if(V==='top'){const want=camTmp.set(car.x-sn*5,32,car.z-cs*5);camPos.lerp(want,1-Math.exp(-dt*4));camera.position.copy(camPos);camera.lookAt(car.x+sn*5,0,car.z+cs*5);camera.fov=50}
+    else if(V==='tv'){const d=tvPos.distanceTo(camTmp.set(car.x,0,car.z));
+      if(!tvSet||d>60){const vx=sp>2?car.vx/sp:sn,vz=sp>2?car.vz/sp:cs;tvSide*=-1;tvPos.set(car.x+vx*38+vz*9*tvSide,3.2,car.z+vz*38-vx*9*tvSide);tvSet=true}
+      camera.position.copy(tvPos);camPos.copy(tvPos);camera.lookAt(car.x,.8,car.z);camera.fov=THREE.MathUtils.clamp(2*Math.atan(5.5/Math.max(1,d))*57.3,12,60)}
+    else{let dx=sn,dz=cs;if(sp>4){const vx=car.vx/sp,vz=car.vz/sp;dx=sn*.55+vx*.45;dz=cs*.55+vz*.45;const l=Math.hypot(dx,dz);dx/=l;dz/=l}
+      const dist=V==='close'?4.4:V==='far'?11:6.8,hgt=V==='close'?1.55:V==='far'?4.5:2.3;
+      const want=camTmp.set(car.x-dx*dist,hgt,car.z-dz*dist);camPos.lerp(want,1-Math.exp(-dt*(V==='close'?12:5)));
+      camera.position.set(camPos.x+Math.sin(t*37)*sk,camPos.y+Math.sin(t*41)*sk,camPos.z+Math.cos(t*33)*sk);
+      camLook.set(car.x+sn*3,.9,car.z+cs*3);camera.lookAt(camLook);camera.fov=56+Math.min(sp,60)*.3}
+    if(V!=='tv')tvSet=false}
+  if(state==='menu'&&CAR.cockpit.visible){CAR.cockpit.visible=false;CAR.panes.forEach(m=>m.visible=true);CAR.cab.forEach(m=>m.visible=true)}
   camera.updateProjectionMatrix();
   sun.position.set(car.x+sunDir.x*300,sunDir.y*300,car.z+sunDir.z*300);sun.target.position.set(car.x,0,car.z);
   // engine audio
